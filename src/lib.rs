@@ -107,7 +107,7 @@ fn view<'a, 'b, S: HasStateApi>(
     let mut return_items: Vec<Option<Item>> = vec![];
     for id in ids {
         let item = state.items.get(&id);
-        return_items.push(item.map(|r| (&*r).clone()));
+        return_items.push(item.as_deref().cloned());
     }
     Ok(return_items)
 }
