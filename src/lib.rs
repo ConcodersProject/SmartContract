@@ -2,21 +2,33 @@
 use concordium_std::*;
 use core::fmt::Debug;
 
-#[derive(Clone)]
+#[derive(Serialize, SchemaType, Clone)]
+pub struct ItemInput {
+    pub name: String,
+    pub price: u64,
+    pub total_supply: u64,
+    pub image_url: String,
+}
+
+#[derive(Serialize, SchemaType, Clone)]
 pub struct Item {
     pub name: String,
     pub price: u64,
+    pub total_supply: u64,
     pub image_url: String,
-    pub creator: AccountAddress,
-    pub owners: Vec<AccountAddress>,
+
+    pub sold: u64,
+    pub creator: Address,
+    pub owners: Vec<Address>,
 }
 
 /// Your smart contract state.
-#[derive(Serialize, SchemaType, Clone)]
-pub struct State {
+#[derive(Serial, DeserialWithState)]
+#[concordium(state_parameter = "S")]
+pub struct State<S: HasStateApi> {
     // Your state
-    counter: i8,
-    items: Vec<Item>,
+    items: StateMap<u64, Item, S>,
+    item_count: u64,
 }
 
 /// Your smart contract errors.
@@ -25,87 +37,77 @@ enum Error {
     /// Failed parsing the parameter.
     #[from(ParseError)]
     ParseParamsError,
-    /// Your error
-    OwnerError,
-    IncrementError,
-    DecrementError,
 }
 
 /// Init function that creates a new smart contract.
-#[init(contract = "counter")]
+#[init(contract = "market")]
 fn init<S: HasStateApi>(
     _ctx: &impl HasInitContext,
     _state_builder: &mut StateBuilder<S>,
-) -> InitResult<State> {
+) -> InitResult<State<S>> {
     // Your code
 
     Ok(State {
-        counter: 0,
-        items: Vec::new(),
+        items: _state_builder.new_map(),
+        item_count: 0,
     })
 }
 
 // Our functions and stuff
 
-type IncrementVal = i8;
-/// Receive function. The input parameter is the boolean variable `throw_error`.
-///  If `throw_error == true`, the receive function will throw a custom error.
-///  If `throw_error == false`, the receive function executes successfully.
+type NewItemData = ItemInput;
 #[receive(
-    contract = "counter",
-    name = "increment",
-    parameter = "i8",
+    contract = "market",
+    name = "add_item",
+    parameter = "ItemInput",
     error = "Error",
     mutable
 )]
-fn increment<S: HasStateApi>(
+fn add_item<S: HasStateApi>(
     ctx: &impl HasReceiveContext,
-    host: &mut impl HasHost<State, StateApiType = S>,
+    host: &mut impl HasHost<State<S>, StateApiType = S>,
 ) -> Result<(), Error> {
     // Your code
 
-    let param: IncrementVal = ctx.parameter_cursor().get()?;
-    let state = host.state_mut();
-    ensure!(
-        ctx.sender().matches_account(&ctx.owner()),
-        Error::OwnerError
-    );
+    let input: NewItemData = ctx.parameter_cursor().get()?;
+    let item = Item {
+        name: input.name.trim().to_string(),
+        price: input.price,
+        total_supply: input.total_supply,
+        image_url: input.image_url.trim().to_string(),
+        sold: 0,
+        creator: ctx.sender(),
+        owners: Vec::new(),
+    };
 
-    ensure!(param > 0, Error::IncrementError);
-    state.counter += param;
+    let state = host.state_mut();
+    // ensure!(
+    //     ctx.sender().matches_account(&ctx.owner()),
+    //     Error::OwnerError
+    // );
+
+    state.items.insert(0, item);
     Ok(())
 }
 
+type ViewItems = Vec<u64>;
+/// View function that returns the items vector of the item indexes we want
 #[receive(
-    contract = "counter",
-    name = "decrement",
-    parameter = "i8",
-    error = "Error",
-    mutable
+    contract = "market",
+    name = "view",
+    parameter = "Vec<u64>",
+    return_value = "Vec<Option<Item>>"
 )]
-fn decrement<S: HasStateApi>(
-    ctx: &impl HasReceiveContext,
-    host: &mut impl HasHost<State, StateApiType = S>,
-) -> Result<(), Error> {
-    // Your code
-
-    let param: IncrementVal = ctx.parameter_cursor().get()?;
-    let state = host.state_mut();
-    ensure!(
-        ctx.sender().matches_account(&ctx.owner()),
-        Error::OwnerError
-    );
-
-    ensure!(param < 0, Error::DecrementError);
-    state.counter -= param;
-    Ok(())
-}
-
-/// View function that returns the content of the state.
-#[receive(contract = "counter", name = "view", return_value = "i8")]
 fn view<'a, 'b, S: HasStateApi>(
     _ctx: &'a impl HasReceiveContext,
-    host: &'b impl HasHost<State, StateApiType = S>,
-) -> ReceiveResult<i8> {
-    Ok(host.state().counter)
+    host: &'b impl HasHost<State<S>, StateApiType = S>,
+) -> ReceiveResult<Vec<Option<Item>>> {
+    let ids: ViewItems = _ctx.parameter_cursor().get()?;
+    let state = host.state();
+    let mut return_items: Vec<Option<Item>> = vec![];
+    for id in ids {
+        let item = state.items.get(&id);
+        return_items.push(item.map(|r| (&*r).clone()));
+    }
+    Ok(return_items)
 }
