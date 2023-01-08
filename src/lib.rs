@@ -153,6 +153,48 @@ fn buy_item<S: HasStateApi>(
 
 #[receive(
     contract = "market",
+    name = "buy_single_item",
+    parameter = "u64",
+    error = "Error",
+    return_value = "bool",
+    mutable,
+    payable
+)]
+fn buy_single_item<S: HasStateApi>(
+    ctx: &impl HasReceiveContext,
+    host: &mut impl HasHost<State<S>, StateApiType = S>,
+    amount: Amount,
+) -> Result<bool, Error> {
+    // Your code
+    let input: u64 = ctx.parameter_cursor().get()?;
+    let state = host.state_mut();
+    let mut item = state
+        .items
+        .get_mut(&input)
+        .ok_or(Error::ItemNotFoundError)?;
+    if item.sold < item.total_supply {
+        // Items available
+        if item.price <= amount {
+            // Sent enough balance
+            item.owners.push(ctx.sender());
+            item.sold += 1;
+        } else {
+        }
+    } else {
+    }
+    item.sold += 1;
+    item.owners.push(ctx.sender());
+
+    // ensure!(
+    //     ctx.sender().matches_account(&ctx.owner()),
+    //     Error::OwnerError
+    // );
+
+    Ok(true)
+}
+
+#[receive(
+    contract = "market",
     name = "transfer_item",
     parameter = "(u64, Address)",
     error = "Error",
