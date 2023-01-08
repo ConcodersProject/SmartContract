@@ -183,26 +183,41 @@ fn transfer_item<S: HasStateApi>(
 
 // Read only views
 
-type ViewItems = Vec<u64>;
-/// View function that returns the items vector of the item indexes we want
+// Get all listed items
 #[receive(
     contract = "market",
-    name = "get_items",
-    parameter = "Vec<u64>",
-    return_value = "Vec<Option<Item>>"
+    name = "get_all_items",
+    // parameter = "u64",
+    return_value = "Vec<(u64, Item)>"
 )]
 fn get_items<'a, 'b, S: HasStateApi>(
     _ctx: &'a impl HasReceiveContext,
     host: &'b impl HasHost<State<S>, StateApiType = S>,
-) -> ReceiveResult<Vec<Option<Item>>> {
-    let ids: ViewItems = _ctx.parameter_cursor().get()?;
+) -> ReceiveResult<Vec<(u64, Item)>> {
+    // let ids: u64 = _ctx.parameter_cursor().get()?;
     let state = host.state();
-    let mut return_items: Vec<Option<Item>> = vec![];
-    for id in ids {
-        let item = state.items.get(&id);
-        return_items.push(item.as_deref().cloned());
+    let mut return_items: Vec<(u64, Item)> = vec![];
+    for (id, item) in state.items.iter() {
+        return_items.push((*id, item.clone()));
     }
     Ok(return_items)
+}
+
+// Get a single item by id
+#[receive(
+    contract = "market",
+    name = "get_single_item",
+    parameter = "u64",
+    return_value = "Item"
+)]
+fn get_single_item<'a, 'b, S: HasStateApi>(
+    _ctx: &'a impl HasReceiveContext,
+    host: &'b impl HasHost<State<S>, StateApiType = S>,
+) -> ReceiveResult<Item> {
+    let id: u64 = _ctx.parameter_cursor().get()?;
+    let state = host.state();
+    let item = state.items.get(&id).ok_or(Error::ItemNotFoundError)?;
+    Ok(item.clone())
 }
 
 // Get number of items created
